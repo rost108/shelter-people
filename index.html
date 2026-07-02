@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Укриття — люди заходять</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; background: #9a9a97; overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    #stage {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      /* співвідношення сторін = під розмір картинки (4:3) */
+      width: min(100vw, 133.333vh);
+      height: min(75vw, 100vh);
+      background: url('shelter.png') center/contain no-repeat;
+    }
+    /* фігурка людини (вигляд згори): голова + плечі */
+    .person {
+      position: absolute;
+      width: 1.4%;
+      /* height задається через aspect у JS-обгортці; використаємо padding-hack */
+      transform: translate(-50%, -50%);
+      transition: left 0.05s linear, top 0.05s linear;
+      z-index: 3;
+      will-change: left, top;
+    }
+    .person .body {
+      position: relative;
+      width: 100%;
+      padding-top: 150%;           /* овальні плечі */
+      background: radial-gradient(circle at 50% 30%, #3a3a3a 0 34%, transparent 35%),
+                  linear-gradient(180deg, #5b6b7a, #3f4a55);
+      border-radius: 45% 45% 42% 42%;
+      box-shadow: 0 0.4vmin 0.6vmin rgba(0,0,0,0.35);
+    }
+    .person.seated .body { filter: brightness(1.15); }
+
+    #ui {
+      position: fixed; inset: 0; z-index: 10;
+      display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 1.4rem;
+      background: rgba(0,0,0,0.45); color: #fff; transition: opacity .5s ease;
+    }
+    #ui h2 { font-weight: 700; font-size: clamp(1.2rem, 4vw, 2rem); text-align:center; padding:0 1rem; }
+    button {
+      padding: 0.9rem 1.8rem; font-size: 1.05rem; font-weight: 700; cursor: pointer;
+      color:#20303a; background:#e7edf1; border:none; border-radius:999px;
+    }
+    button:active { transform: scale(.95); }
+    #replay {
+      position: fixed; z-index: 9; left: 50%; bottom: 5%; transform: translateX(-50%); display:none;
+    }
+    #missing {
+      position: fixed; inset: 0; z-index: 20; display: none;
+      align-items: center; justify-content: center; text-align:center; padding: 2rem;
+      background:#2a2a28; color:#eee; font-size: 1.1rem; line-height:1.6;
+    }
+  </style>
+</head>
+<body>
+  <div id="stage"></div>
+
+  <button id="replay">↻ Ще раз</button>
+  <div id="ui">
+    <h2>Люди заходять в укриття</h2>
+    <button id="startBtn">▶ Почати</button>
+  </div>
+  <div id="missing">
+    Немає файлу <b>shelter.jpg</b> у цій папці.<br>
+    Збережи рендер укриття як <b>shelter.jpg</b> поруч із index.html.
+  </div>
+
+  <script>
+    const stage = document.getElementById('stage');
+    const ui = document.getElementById('ui');
+    const replay = document.getElementById('replay');
+
+    // Точка входу (двері нижньої-лівої кімнати) у % від сцени
+    const ENTRY = { x: 28, y: 75 };
+    // Проміжна точка-«коридор», щоб люди йшли природно вглиб кімнати з лавками
+    const HALL = { x: 31, y: 67 };
+
+    // Місця на лавках (дерев'яні лавки в нижній-лівій кімнаті), у % від сцени.
+    const SEATS = [
+      // верхня лавка зі спинкою (біля стіни)
+      { x: 28.2, y: 52.7 }, { x: 30.9, y: 51.3 }, { x: 33.7, y: 49.9 }, { x: 36.4, y: 48.5 },
+      // нижня довга лавка
+      { x: 33.0, y: 62.3 }, { x: 37.1, y: 59.5 }, { x: 41.2, y: 56.8 }, { x: 44.6, y: 54.9 },
+      // крайній стілець зліва
+      { x: 26.8, y: 56.8 }
+    ];
+
+    function makePerson() {
+      const p = document.createElement('div');
+      p.className = 'person';
+      p.innerHTML = '<div class="body"></div>';
+      p.style.left = ENTRY.x + '%';
+      p.style.top = ENTRY.y + '%';
+      stage.appendChild(p);
+      return p;
+    }
+
+    function moveTo(el, from, to, speed) {
+      return new Promise(resolve => {
+        const dx = to.x - from.x, dy = to.y - from.y;
+        const dist = Math.hypot(dx, dy);
+        const dur = Math.max(300, dist / speed * 1000);
+        let start = null;
+        function step(ts) {
+          if (!start) start = ts;
+          const t = Math.min((ts - start) / dur, 1);
+          const e = t < .5 ? 2*t*t : -1+(4-2*t)*t; // ease-in-out
+          const x = from.x + dx * e, y = from.y + dy * e;
+          el.style.left = x + '%';
+          el.style.top = y + '%';
+          // легке «покачування» під час ходьби
+          const wob = Math.sin(t * 22) * 1.5;
+          el.querySelector('.body').style.transform = `rotate(${wob}deg)`;
+          if (t < 1) requestAnimationFrame(step);
+          else resolve();
+        }
+        requestAnimationFrame(step);
+      });
+    }
+
+    async function personRoutine(seat, delay) {
+      await new Promise(r => setTimeout(r, delay));
+      const p = makePerson();
+      await moveTo(p, ENTRY, HALL, 18);
+      await moveTo(p, HALL, seat, 14);
+      p.classList.add('seated');
+      p.querySelector('.body').style.transform = 'rotate(0deg)';
+    }
+
+    async function run() {
+      ui.style.opacity = 0;
+      setTimeout(() => ui.style.display = 'none', 500);
+      // перевірка наявності картинки
+      const img = new Image();
+      img.onerror = () => { document.getElementById('missing').style.display = 'flex'; };
+      img.src = 'shelter.jpg';
+
+      const jobs = SEATS.map((seat, i) => personRoutine(seat, i * 900));
+      await Promise.all(jobs);
+      replay.style.display = 'block';
+    }
+
+    function reset() {
+      document.querySelectorAll('.person').forEach(p => p.remove());
+      replay.style.display = 'none';
+      run();
+    }
+
+    document.getElementById('startBtn').addEventListener('click', run);
+    replay.addEventListener('click', reset);
+  </script>
+</body>
+</html>
