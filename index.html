@@ -12,31 +12,93 @@
       position: absolute;
       top: 50%; left: 50%;
       transform: translate(-50%, -50%);
-      /* співвідношення сторін = під розмір картинки (4:3) */
       width: min(100vw, 133.333vh);
       height: min(75vw, 100vh);
       background: url('shelter.png') center/contain no-repeat;
     }
-    /* фігурка людини (вигляд згори): голова + плечі */
+
+    /* ---------- ЛЮДИНА (об'ємна фігурка) ---------- */
     .person {
       position: absolute;
-      width: 1.4%;
-      /* height задається через aspect у JS-обгортці; використаємо padding-hack */
-      transform: translate(-50%, -50%);
-      transition: left 0.05s linear, top 0.05s linear;
-      z-index: 3;
+      width: 2.3%;
+      transform: translate(-50%, -72%);
+      z-index: 4;
       will-change: left, top;
     }
-    .person .body {
+    .person .fig {
       position: relative;
       width: 100%;
-      padding-top: 150%;           /* овальні плечі */
-      background: radial-gradient(circle at 50% 30%, #3a3a3a 0 34%, transparent 35%),
-                  linear-gradient(180deg, #5b6b7a, #3f4a55);
-      border-radius: 45% 45% 42% 42%;
-      box-shadow: 0 0.4vmin 0.6vmin rgba(0,0,0,0.35);
+      padding-top: 165%;
+      transform-origin: 50% 88%;
     }
-    .person.seated .body { filter: brightness(1.15); }
+    .person .shadow {
+      position: absolute;
+      left: 50%; bottom: -6%;
+      width: 92%; height: 22%;
+      transform: translateX(-50%);
+      background: radial-gradient(ellipse, rgba(0,0,0,0.38) 0 55%, transparent 70%);
+      z-index: 0;
+    }
+    .person .head {
+      position: absolute;
+      left: 50%; top: 0;
+      width: 52%; padding-top: 52%;
+      transform: translateX(-50%);
+      border-radius: 50%;
+      background: radial-gradient(circle at 42% 35%, var(--skin), var(--skinsh));
+      box-shadow: inset 0 -0.2vmin 0.3vmin rgba(0,0,0,0.25);
+      z-index: 3;
+    }
+    .person .torso {
+      position: absolute;
+      left: 50%; top: 40%;
+      width: 100%; height: 62%;
+      transform: translateX(-50%);
+      border-radius: 46% 46% 40% 40%;
+      background: linear-gradient(180deg, var(--shirt), var(--shirtsh));
+      box-shadow: inset 0 -0.3vmin 0.5vmin rgba(0,0,0,0.28);
+      z-index: 2;
+    }
+    .person .arm {
+      position: absolute;
+      top: 46%;
+      width: 26%; height: 46%;
+      border-radius: 40%;
+      background: linear-gradient(180deg, var(--shirt), var(--shirtsh));
+      z-index: 1;
+      transform-origin: 50% 12%;
+    }
+    .person .arm.l { left: -8%; }
+    .person .arm.r { right: -8%; }
+
+    /* хода: махання руками + похитування */
+    .person.walking .fig { animation: bob 0.5s ease-in-out infinite; }
+    .person.walking .arm.l { animation: swingA 0.5s ease-in-out infinite; }
+    .person.walking .arm.r { animation: swingB 0.5s ease-in-out infinite; }
+    @keyframes bob { 0%,100%{transform:rotate(-2deg) translateY(0);} 50%{transform:rotate(2deg) translateY(-4%);} }
+    @keyframes swingA { 0%,100%{transform:rotate(24deg);} 50%{transform:rotate(-24deg);} }
+    @keyframes swingB { 0%,100%{transform:rotate(-24deg);} 50%{transform:rotate(24deg);} }
+    .person.seated { transform: translate(-50%, -60%) scale(0.92); }
+
+    /* ---------- ДВЕРІ (накладка над дверима на рендері) ---------- */
+    #door {
+      position: absolute;
+      z-index: 3;
+      /* позиція/кут підбираються під двері на картинці */
+      left: 27.3%; top: 63.5%;
+      width: 3.6%; height: 15%;
+      transform-origin: top left;
+      transform: rotate(28deg);
+    }
+    #door .leaf {
+      width: 100%; height: 100%;
+      background: linear-gradient(120deg, #6f5a3e, #4c3d28);
+      border: 0.25vmin solid #3a2e1e;
+      box-shadow: 0 0.4vmin 0.8vmin rgba(0,0,0,0.4);
+      transform-origin: left center;
+      transition: transform 1.1s cubic-bezier(.3,.7,.3,1);
+    }
+    #door.open .leaf { transform: perspective(30vmin) rotateY(-78deg); }
 
     #ui {
       position: fixed; inset: 0; z-index: 10;
@@ -49,9 +111,7 @@
       color:#20303a; background:#e7edf1; border:none; border-radius:999px;
     }
     button:active { transform: scale(.95); }
-    #replay {
-      position: fixed; z-index: 9; left: 50%; bottom: 5%; transform: translateX(-50%); display:none;
-    }
+    #replay { position: fixed; z-index: 9; left: 50%; bottom: 5%; transform: translateX(-50%); display:none; }
     #missing {
       position: fixed; inset: 0; z-index: 20; display: none;
       align-items: center; justify-content: center; text-align:center; padding: 2rem;
@@ -60,7 +120,9 @@
   </style>
 </head>
 <body>
-  <div id="stage"></div>
+  <div id="stage">
+    <div id="door"><div class="leaf"></div></div>
+  </div>
 
   <button id="replay">↻ Ще раз</button>
   <div id="ui">
@@ -76,85 +138,101 @@
     const stage = document.getElementById('stage');
     const ui = document.getElementById('ui');
     const replay = document.getElementById('replay');
+    const doorEl = document.getElementById('door');
 
-    // Точка входу (двері нижньої-лівої кімнати) у % від сцени
-    const ENTRY = { x: 28, y: 75 };
-    // Проміжна точка-«коридор», щоб люди йшли природно вглиб кімнати з лавками
-    const HALL = { x: 31, y: 67 };
-
-    // Місця на лавках (дерев'яні лавки в нижній-лівій кімнаті), у % від сцени.
+    // точка входу (біля дверей), коридор і місця на лавках — у % від сцени
+    const ENTRY = { x: 26.5, y: 74 };
+    const HALL  = { x: 31, y: 66 };
     const SEATS = [
-      // верхня лавка зі спинкою (біля стіни)
       { x: 28.2, y: 52.7 }, { x: 30.9, y: 51.3 }, { x: 33.7, y: 49.9 }, { x: 36.4, y: 48.5 },
-      // нижня довга лавка
       { x: 33.0, y: 62.3 }, { x: 37.1, y: 59.5 }, { x: 41.2, y: 56.8 }, { x: 44.6, y: 54.9 },
-      // крайній стілець зліва
       { x: 26.8, y: 56.8 }
     ];
 
-    function makePerson() {
-      const p = document.createElement('div');
-      p.className = 'person';
-      p.innerHTML = '<div class="body"></div>';
-      p.style.left = ENTRY.x + '%';
-      p.style.top = ENTRY.y + '%';
-      stage.appendChild(p);
-      return p;
+    // палітра одягу / шкіри для різноманіття
+    const SHIRTS = [
+      ['#3f6fb0','#2c4f80'], ['#b04a3f','#803029'], ['#4a8a5a','#356643'],
+      ['#c9a24b','#9a7a34'], ['#6a5aa0','#4a3f78'], ['#3f8fa0','#2c6674'],
+      ['#a0506f','#78394f'], ['#565b64','#3d4149'], ['#b07a3f','#805829']
+    ];
+    const SKINS = [
+      ['#e8c39e','#c99f78'], ['#d8a97a','#b8895a'], ['#c78e5f','#a06d44'],
+      ['#f0d0b0','#d0ad8a'], ['#b57a4f','#8f5c38']
+    ];
+
+    let ctx = null;
+    const A = () => (ctx = ctx || new (window.AudioContext||window.webkitAudioContext)());
+
+    function footstep(t){
+      const c=A(); const b=c.createBuffer(1,c.sampleRate*0.1,c.sampleRate); const d=b.getChannelData(0);
+      for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,3);
+      const s=c.createBufferSource(); s.buffer=b;
+      const f=c.createBiquadFilter(); f.type='lowpass'; f.frequency.value=380;
+      const g=c.createGain(); g.gain.setValueAtTime(0.22,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.1);
+      s.connect(f).connect(g).connect(c.destination); s.start(t); s.stop(t+0.1);
+    }
+    function doorCreak(){
+      const c=A(); const t=c.currentTime;
+      const o=c.createOscillator(); o.type='sawtooth';
+      o.frequency.setValueAtTime(220,t); o.frequency.linearRampToValueAtTime(90,t+1.0);
+      const g=c.createGain(); g.gain.setValueAtTime(0.0001,t);
+      g.gain.exponentialRampToValueAtTime(0.12,t+0.1); g.gain.exponentialRampToValueAtTime(0.001,t+1.1);
+      const f=c.createBiquadFilter(); f.type='bandpass'; f.frequency.value=600; f.Q.value=6;
+      o.connect(f).connect(g).connect(c.destination); o.start(t); o.stop(t+1.15);
     }
 
-    function moveTo(el, from, to, speed) {
-      return new Promise(resolve => {
-        const dx = to.x - from.x, dy = to.y - from.y;
-        const dist = Math.hypot(dx, dy);
-        const dur = Math.max(300, dist / speed * 1000);
-        let start = null;
-        function step(ts) {
-          if (!start) start = ts;
-          const t = Math.min((ts - start) / dur, 1);
-          const e = t < .5 ? 2*t*t : -1+(4-2*t)*t; // ease-in-out
-          const x = from.x + dx * e, y = from.y + dy * e;
-          el.style.left = x + '%';
-          el.style.top = y + '%';
-          // легке «покачування» під час ходьби
-          const wob = Math.sin(t * 22) * 1.5;
-          el.querySelector('.body').style.transform = `rotate(${wob}deg)`;
-          if (t < 1) requestAnimationFrame(step);
-          else resolve();
+    function makePerson(i){
+      const p=document.createElement('div'); p.className='person walking';
+      const sh=SHIRTS[i%SHIRTS.length], sk=SKINS[i%SKINS.length];
+      p.style.setProperty('--shirt',sh[0]); p.style.setProperty('--shirtsh',sh[1]);
+      p.style.setProperty('--skin',sk[0]);  p.style.setProperty('--skinsh',sk[1]);
+      p.innerHTML='<div class="fig"><div class="shadow"></div><div class="arm l"></div><div class="arm r"></div><div class="torso"></div><div class="head"></div></div>';
+      p.style.left=ENTRY.x+'%'; p.style.top=ENTRY.y+'%';
+      stage.appendChild(p); return p;
+    }
+
+    function moveTo(el,from,to,speed){
+      return new Promise(res=>{
+        const dx=to.x-from.x, dy=to.y-from.y, dist=Math.hypot(dx,dy);
+        const dur=Math.max(300,dist/speed*1000); let start=null; let lastStep=0;
+        function step(ts){
+          if(!start) start=ts;
+          const t=Math.min((ts-start)/dur,1);
+          const e=t<.5?2*t*t:-1+(4-2*t)*t;
+          el.style.left=(from.x+dx*e)+'%'; el.style.top=(from.y+dy*e)+'%';
+          if(ts-lastStep>250){ footstep(A().currentTime); lastStep=ts; }
+          if(t<1) requestAnimationFrame(step); else res();
         }
         requestAnimationFrame(step);
       });
     }
 
-    async function personRoutine(seat, delay) {
-      await new Promise(r => setTimeout(r, delay));
-      const p = makePerson();
-      await moveTo(p, ENTRY, HALL, 18);
-      await moveTo(p, HALL, seat, 14);
-      p.classList.add('seated');
-      p.querySelector('.body').style.transform = 'rotate(0deg)';
+    async function personRoutine(seat,i,delay){
+      await new Promise(r=>setTimeout(r,delay));
+      const p=makePerson(i);
+      await moveTo(p,ENTRY,HALL,16);
+      await moveTo(p,HALL,seat,13);
+      p.classList.remove('walking'); p.classList.add('seated');
     }
 
-    async function run() {
-      ui.style.opacity = 0;
-      setTimeout(() => ui.style.display = 'none', 500);
-      // перевірка наявності картинки
-      const img = new Image();
-      img.onerror = () => { document.getElementById('missing').style.display = 'flex'; };
-      img.src = 'shelter.png';
-
-      const jobs = SEATS.map((seat, i) => personRoutine(seat, i * 900));
-      await Promise.all(jobs);
-      replay.style.display = 'block';
+    async function run(){
+      ui.style.opacity=0; setTimeout(()=>ui.style.display='none',500);
+      const img=new Image(); img.onerror=()=>{document.getElementById('missing').style.display='flex';}; img.src='shelter.png';
+      // спершу відчиняємо двері
+      A(); doorCreak(); doorEl.classList.add('open');
+      await new Promise(r=>setTimeout(r,1100));
+      // потім заходять люди
+      await Promise.all(SEATS.map((s,i)=>personRoutine(s,i,i*950)));
+      replay.style.display='block';
     }
 
-    function reset() {
-      document.querySelectorAll('.person').forEach(p => p.remove());
-      replay.style.display = 'none';
-      run();
+    function reset(){
+      document.querySelectorAll('.person').forEach(p=>p.remove());
+      doorEl.classList.remove('open'); replay.style.display='none'; run();
     }
 
-    document.getElementById('startBtn').addEventListener('click', run);
-    replay.addEventListener('click', reset);
+    document.getElementById('startBtn').addEventListener('click',run);
+    replay.addEventListener('click',reset);
   </script>
 </body>
 </html>
