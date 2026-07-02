@@ -68,8 +68,8 @@
     <button id="startBtn">▶ Почати</button>
   </div>
   <div id="missing">
-    Немає файлу <b>shelter.jpg</b> у цій папці.<br>
-    Збережи рендер укриття як <b>shelter.jpg</b> поруч із index.html.
+    Немає файлу <b>shelter.png</b> у цій папці.<br>
+    Збережи рендер укриття як <b>shelter.png</b> поруч із index.html.
   </div>
 
   <script>
@@ -140,7 +140,7 @@
       // перевірка наявності картинки
       const img = new Image();
       img.onerror = () => { document.getElementById('missing').style.display = 'flex'; };
-      img.src = 'shelter.jpg';
+      img.src = 'shelter.png';
 
       const jobs = SEATS.map((seat, i) => personRoutine(seat, i * 900));
       await Promise.all(jobs);
